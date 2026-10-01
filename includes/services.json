@@ -1,0 +1,91 @@
+{
+	"_comment": "Well-known services by host suffix, and words that name a service in a privacy policy. Used for recognition only; nothing is loaded from these hosts.",
+	"services": {
+		"googletagmanager.com": "Google Tag Manager",
+		"google-analytics.com": "Google Analytics",
+		"analytics.google.com": "Google Analytics",
+		"fonts.googleapis.com": "Google Fonts",
+		"fonts.gstatic.com": "Google Fonts",
+		"maps.googleapis.com": "Google Maps",
+		"maps.google.com": "Google Maps",
+		"ajax.googleapis.com": "Google Hosted Libraries",
+		"recaptcha.net": "Google reCAPTCHA",
+		"doubleclick.net": "Google Ads",
+		"googleadservices.com": "Google Ads",
+		"googlesyndication.com": "Google AdSense",
+		"youtube.com": "YouTube",
+		"youtube-nocookie.com": "YouTube",
+		"ytimg.com": "YouTube",
+		"vimeo.com": "Vimeo",
+		"vimeocdn.com": "Vimeo",
+		"facebook.net": "Meta",
+		"facebook.com": "Meta",
+		"instagram.com": "Instagram",
+		"cdninstagram.com": "Instagram",
+		"twitter.com": "X",
+		"x.com": "X",
+		"twimg.com": "X",
+		"linkedin.com": "LinkedIn",
+		"licdn.com": "LinkedIn",
+		"pinterest.com": "Pinterest",
+		"pinimg.com": "Pinterest",
+		"tiktok.com": "TikTok",
+		"cdn.jsdelivr.net": "jsDelivr",
+		"cdnjs.cloudflare.com": "cdnjs",
+		"unpkg.com": "unpkg",
+		"code.jquery.com": "jQuery CDN",
+		"gravatar.com": "Gravatar",
+		"s.w.org": "WordPress.org",
+		"wordpress.org": "WordPress.org",
+		"stats.wp.com": "Jetpack",
+		"i0.wp.com": "Jetpack",
+		"hotjar.com": "Hotjar",
+		"clarity.ms": "Microsoft Clarity",
+		"bing.com": "Microsoft Advertising",
+		"plausible.io": "Plausible",
+		"cloudflareinsights.com": "Cloudflare Web Analytics",
+		"challenges.cloudflare.com": "Cloudflare Turnstile",
+		"hcaptcha.com": "hCaptcha",
+		"stripe.com": "Stripe",
+		"stripe.network": "Stripe",
+		"paypal.com": "PayPal",
+		"paypalobjects.com": "PayPal",
+		"use.typekit.net": "Adobe Fonts",
+		"p.typekit.net": "Adobe Fonts",
+		"fontawesome.com": "Font Awesome",
+		"list-manage.com": "Mailchimp",
+		"hs-scripts.com": "HubSpot",
+		"hsforms.net": "HubSpot",
+		"openstreetmap.org": "OpenStreetMap",
+		"images.unsplash.com": "Unsplash",
+		"www.google.com": "Google",
+		"www.gstatic.com": "Google"
+	},
+	"aliases": {
+		"Meta": [
+			"facebook",
+			"meta platforms",
+			"meta pixel"
+		],
+		"X": [
+			"twitter",
+			"x corp"
+		],
+		"Google Ads": [
+			"google ads",
+			"doubleclick",
+			"google adwords"
+		],
+		"Jetpack": [
+			"jetpack",
+			"wordpress.com"
+		],
+		"jQuery CDN": [
+			"jquery cdn",
+			"code.jquery.com"
+		],
+		"Google": [
+			"google"
+		]
+	}
+}
