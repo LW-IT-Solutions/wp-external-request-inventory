@@ -63,6 +63,26 @@ function erinv_scan_urls() {
 	return array_values( array_unique( array_filter( $urls ) ) );
 }
 
+/**
+ * Further pages entered for the previous scan, so the next scan covers them again.
+ * Each scan replaces the browser results; without them, hosts found only there would drop out.
+ *
+ * @return string[] Addresses on this site.
+ */
+function erinv_further_pages() {
+	$scan = get_option( ERINV_Store::BROWSER, array() );
+	if ( ! is_array( $scan ) || empty( $scan['further'] ) || ! is_array( $scan['further'] ) ) {
+		return array();
+	}
+	$home   = wp_parse_url( home_url() );
+	$origin = $home['scheme'] . '://' . $home['host'] . ( isset( $home['port'] ) ? ':' . $home['port'] : '' );
+	$urls   = array();
+	foreach ( ERINV_Store::clean_paths( $scan['further'] ) as $path ) {
+		$urls[] = $origin . $path;
+	}
+	return array_slice( $urls, 0, 20 );
+}
+
 /** Load local assets only on our screen.
  * @param string $hook Current screen.
  */
@@ -85,9 +105,9 @@ function erinv_admin_assets( $hook ) {
 				/* translators: 1: current page number, 2: number of pages, 3: page address. */
 				'scanning'   => __( 'Scanning %1$d of %2$d: %3$s', 'external-request-inventory' ),
 				/* translators: 1: number of pages scanned, 2: number of pages that failed, 3: date and time. */
-				'scanned'    => __( 'Scanned %1$d pages, %2$d failed. Last scan: %3$s', 'external-request-inventory' ),
+				'scanned'    => __( 'Pages scanned: %1$d, failed: %2$d. Last scan: %3$s', 'external-request-inventory' ),
 				/* translators: 1: date and time, 2: number of pages. */
-				'last'       => __( 'Last scan: %1$s, %2$d pages.', 'external-request-inventory' ),
+				'last'       => __( 'Last scan: %1$s, pages: %2$d.', 'external-request-inventory' ),
 				'never'      => __( 'No browser scan yet.', 'external-request-inventory' ),
 				'error'      => __( 'The request failed. Please retry or reload the page.', 'external-request-inventory' ),
 				/* translators: %s: page address. */
@@ -95,7 +115,7 @@ function erinv_admin_assets( $hook ) {
 				/* translators: %s: address entered by the user. */
 				'foreign'    => __( 'Skipped, not on this site: %s', 'external-request-inventory' ),
 				/* translators: 1: number of hosts, 2: hosts not named in the privacy policy, 3: new hosts. */
-				'summary'    => __( '%1$d external hosts. %2$d not named in the privacy policy. %3$d new since the previous scan.', 'external-request-inventory' ),
+				'summary'    => __( 'External hosts: %1$d. Not named in the privacy policy: %2$d. New since the previous scan: %3$d.', 'external-request-inventory' ),
 				'nopolicy'   => __( 'No published privacy policy page is set under Settings > Privacy, so the policy check is skipped.', 'external-request-inventory' ),
 				'empty'      => __( 'No external hosts recorded yet.', 'external-request-inventory' ),
 				'browser'    => __( 'Browser', 'external-request-inventory' ),
@@ -169,7 +189,7 @@ function erinv_admin_page() {
 		</p>
 		<p>
 			<label for="erinv-extra"><?php esc_html_e( 'Further pages of this site, one address per line (optional, up to 20):', 'external-request-inventory' ); ?></label><br>
-			<textarea id="erinv-extra" rows="3" class="large-text code"></textarea>
+			<textarea id="erinv-extra" rows="3" class="large-text code"><?php echo esc_textarea( implode( "\n", erinv_further_pages() ) ); ?></textarea>
 		</p>
 		<p class="erinv-actions">
 			<button type="button" class="button button-primary" id="erinv-scan"><?php esc_html_e( 'Scan pages', 'external-request-inventory' ); ?></button>
@@ -223,10 +243,12 @@ function erinv_ajax_save() {
 	// JSON with host names and decoded page paths; every field is validated again in ERINV_Store.
 	$raw   = isset( $_POST['hosts'] ) && is_string( $_POST['hosts'] ) ? json_decode( sanitize_textarea_field( wp_unslash( $_POST['hosts'] ) ), true ) : null;
 	$pages = isset( $_POST['pages'] ) && is_string( $_POST['pages'] ) ? json_decode( sanitize_textarea_field( wp_unslash( $_POST['pages'] ) ), true ) : null;
+	$more  = isset( $_POST['further'] ) && is_string( $_POST['further'] ) ? json_decode( sanitize_textarea_field( wp_unslash( $_POST['further'] ) ), true ) : array();
 	if ( ! is_array( $raw ) || ! is_array( $pages ) ) {
 		wp_send_json_error( array( 'message' => __( 'Invalid request.', 'external-request-inventory' ) ), 400 );
 	}
-	ERINV_Store::save_scan( ERINV_Store::clean_scan( $raw ), array_slice( ERINV_Store::clean_paths( $pages ), 0, 40 ) );
+	$more = is_array( $more ) ? array_slice( ERINV_Store::clean_paths( $more ), 0, 20 ) : array();
+	ERINV_Store::save_scan( ERINV_Store::clean_scan( $raw ), array_slice( ERINV_Store::clean_paths( $pages ), 0, 40 ), $more );
 	wp_send_json_success( ERINV_Store::report() );
 }
 

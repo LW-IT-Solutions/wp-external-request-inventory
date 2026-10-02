@@ -112,21 +112,23 @@
     }
 
     function pagesToScan() {
-        const list = ERINV.pages.slice(), notes = [];
+        const list = ERINV.pages.slice(), notes = [], further = [];
         extra.value.split(/\r?\n/).map(s => s.trim()).filter(Boolean).slice(0, 20).forEach(line => {
             let url;
             try { url = new URL(line, location.origin); } catch (_) { notes.push(fmt(T.foreign, line)); return; }
-            if ((url.protocol === 'http:' || url.protocol === 'https:') && own.has(url.hostname.toLowerCase())) list.push(url.href);
-            else notes.push(fmt(T.foreign, line));
+            if ((url.protocol === 'http:' || url.protocol === 'https:') && own.has(url.hostname.toLowerCase())) {
+                list.push(url.href);
+                further.push(path(url));
+            } else notes.push(fmt(T.foreign, line));
         });
-        return {list: Array.from(new Set(list)), notes};
+        return {list: Array.from(new Set(list)), notes, further};
     }
 
     async function scan() {
         if (busy) return;
         busy = true; scanButton.disabled = true;
         const hosts = new Map(), ownCss = new Set(), pages = [];
-        const {list, notes} = pagesToScan();
+        const {list, notes, further} = pagesToScan();
         let failed = 0;
         const add = (host, type, page) => {
             if (!hosts.has(host)) hosts.set(host, {types: new Set(), pages: new Set()});
@@ -159,13 +161,13 @@
                         let url;
                         try { url = new URL(value, base); } catch (_) { return; }
                         const host = url.hostname.toLowerCase();
-                        if ((url.protocol === 'http:' || url.protocol === 'https:') && !own.has(host)) add(host, FONT.test(url.pathname) ? 'font' : 'css', null);
+                        if ((url.protocol === 'http:' || url.protocol === 'https:') && !own.has(host)) add(host, FONT.test(url.pathname) ? 'font' : 'css', path(base));
                     });
                 } catch (_) { /* A stylesheet that cannot be read is skipped. */ }
             }
             const payload = {};
             hosts.forEach((value, host) => { payload[host] = {types: Array.from(value.types), pages: Array.from(value.pages)}; });
-            report = await post({action: 'erinv_save', hosts: JSON.stringify(payload), pages: JSON.stringify(pages)});
+            report = await post({action: 'erinv_save', hosts: JSON.stringify(payload), pages: JSON.stringify(pages), further: JSON.stringify(further)});
             render();
             status.replaceChildren(el('span', fmt(T.scanned, pages.length, failed, report.scanned)));
             notes.forEach(note => status.append(el('span', note, 'erinv-note')));

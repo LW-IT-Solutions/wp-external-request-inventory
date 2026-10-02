@@ -217,10 +217,11 @@ class ERINV_Store {
 
 	/** Store a browser scan sent from the tools screen.
 	 * @param array $hosts Host => array( 'types' => array, 'pages' => array ), already validated.
-	 * @param array $pages Scanned page paths.
+	 * @param array $pages   Scanned page paths.
+	 * @param array $further Paths of the further pages entered for this scan.
 	 * @return array Stored scan.
 	 */
-	public static function save_scan( $hosts, $pages ) {
+	public static function save_scan( $hosts, $pages, $further = array() ) {
 		$old   = get_option( self::BROWSER, array() );
 		$old   = is_array( $old ) ? $old : array();
 		$known = isset( $old['known'] ) && is_array( $old['known'] ) ? $old['known'] : array();
@@ -241,6 +242,7 @@ class ERINV_Store {
 		$scan = array(
 			'scanned' => $now,
 			'pages'   => $pages,
+			'further' => $further,
 			'hosts'   => $hosts,
 			'known'   => $known,
 			'new'     => $new,
