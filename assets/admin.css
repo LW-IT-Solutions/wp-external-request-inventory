@@ -15,6 +15,11 @@
 .erinv-badge { display: inline-block; padding: 0 6px; border-radius: 3px; background: #2271b1; color: #fff; font-size: 11px; line-height: 18px; vertical-align: middle; }
 .erinv-table td.erinv-no { color: #b32d2e; font-weight: 600; }
 .erinv-table td.erinv-yes { color: #00731f; }
+.erinv-dialog { max-width: 440px; padding: 20px 24px; border: 1px solid #c3c4c7; border-radius: 4px; color: #1d2327; background: #fff; box-shadow: 0 3px 30px rgba(0, 0, 0, .2); }
+.erinv-dialog::backdrop { background: rgba(0, 0, 0, .45); }
+.erinv-dialog h2 { margin: 0 0 8px; font-size: 1.3em; }
+.erinv-dialog p { margin: 0 0 16px; }
+.erinv-dialog .erinv-dialog-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; margin: 0; }
 @media screen and (max-width: 782px) {
 	.erinv-table table { min-width: 0; }
 	.erinv-table thead { display: none; }

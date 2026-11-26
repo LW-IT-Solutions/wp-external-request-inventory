@@ -140,7 +140,13 @@
             for (let i = 0; i < list.length; i++) {
                 status.textContent = fmt(T.scanning, i + 1, list.length, list[i]);
                 try {
-                    const response = await fetch(list[i], {credentials: 'omit', cache: 'no-store', redirect: 'follow'});
+                    // Redirects are not followed, so the browser never requests an address on another host.
+                    const response = await fetch(list[i], {credentials: 'omit', cache: 'no-store', redirect: 'manual'});
+                    if (response.type === 'opaqueredirect') {
+                        failed++;
+                        notes.push(fmt(T.redirect, list[i]));
+                        continue;
+                    }
                     if (!response.ok || !/html/i.test(response.headers.get('content-type') || '')) throw new Error('page');
                     const base = new URL(response.url);
                     const html = (await response.text()).slice(0, 5000000);
@@ -154,8 +160,8 @@
             }
             for (const href of Array.from(ownCss).slice(0, 20)) {
                 try {
-                    const response = await fetch(href, {credentials: 'omit'});
-                    if (!response.ok) continue;
+                    const response = await fetch(href, {credentials: 'omit', redirect: 'manual'});
+                    if (!response.ok) continue; // Also skips stylesheets that redirect.
                     const base = new URL(response.url);
                     cssUrls((await response.text()).slice(0, 2000000)).forEach(value => {
                         let url;
@@ -243,9 +249,38 @@
         return '"' + text.replace(/"/g, '""') + '"';
     }
 
+    /* Confirmation in a modal dialog of the page. The native dialog keeps the focus inside, closes on Escape and
+       returns the focus to the button that opened it; Enter activates the focused button. */
+    function confirmDialog(title, text, okLabel, onConfirm) {
+        const dialog = el('dialog', undefined, 'erinv-dialog');
+        const heading = el('h2', title);
+        heading.id = 'erinv-dialog-title';
+        const message = el('p', text);
+        message.id = 'erinv-dialog-text';
+        dialog.setAttribute('aria-labelledby', heading.id);
+        dialog.setAttribute('aria-describedby', message.id);
+        dialog.setAttribute('aria-modal', 'true');
+        const actions = el('p', undefined, 'erinv-dialog-actions');
+        const cancel = el('button', T.cancel, 'button');
+        cancel.type = 'button';
+        const ok = el('button', okLabel, 'button button-primary');
+        ok.type = 'button';
+        actions.append(cancel, ok);
+        dialog.append(heading, message, actions);
+        cancel.addEventListener('click', () => dialog.close('cancel'));
+        ok.addEventListener('click', () => dialog.close('ok'));
+        dialog.addEventListener('close', () => {
+            dialog.remove();
+            if (dialog.returnValue === 'ok') onConfirm();
+        });
+        document.body.append(dialog);
+        dialog.showModal();
+        ok.focus();
+    }
+
     scanButton.addEventListener('click', scan);
     toggle.addEventListener('click', () => action(report && report.recording ? 'pause' : 'resume'));
-    clear.addEventListener('click', () => { if (window.confirm(T.confirmClr)) action('clear'); });
+    clear.addEventListener('click', () => confirmDialog(T.clearTitle, T.confirmClr, T.clearOk, () => action('clear')));
     csvButton.addEventListener('click', () => {
         const data = [T.csv];
         report.rows.forEach(r => data.push([

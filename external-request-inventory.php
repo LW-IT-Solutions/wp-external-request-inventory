@@ -1,8 +1,8 @@
 <?php
 /**
  * Plugin Name: External Request Inventory
- * Description: List the external hosts your site contacts: server-side HTTP requests and resources in your public pages, checked against your privacy policy page. Stores host names only.
- * Version: 0.1.0
+ * Description: List the external hosts your site contacts: server-side HTTP requests and resources in your public pages, checked against your privacy policy page. Stores host names, counts, dates, component names and page paths, no full URLs or visitor data.
+ * Version: 0.1.1
  * Requires at least: 6.2
  * Requires PHP: 7.4
  * Author: LW IT Solutions
@@ -19,6 +19,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 require_once __DIR__ . '/includes/class-erinv-store.php';
 
+register_activation_hook( __FILE__, 'erinv_activate' );
 if ( ERINV_Store::recording() ) {
 	add_filter( 'pre_http_request', array( 'ERINV_Store', 'observe' ), 10, 3 );
 }
@@ -27,6 +28,13 @@ add_action( 'admin_enqueue_scripts', 'erinv_admin_assets' );
 add_action( 'wp_ajax_erinv_report', 'erinv_ajax_report' );
 add_action( 'wp_ajax_erinv_save', 'erinv_ajax_save' );
 add_action( 'wp_ajax_erinv_action', 'erinv_ajax_action' );
+
+/** Activation: start the server log, so its start date is the activation date. An existing log is kept. */
+function erinv_activate() {
+	if ( false === get_option( ERINV_Store::SERVER ) ) {
+		ERINV_Store::clear_server();
+	}
+}
 
 /** Register the tools screen. */
 function erinv_admin_menu() {
@@ -90,8 +98,8 @@ function erinv_admin_assets( $hook ) {
 	if ( 'tools_page_external-request-inventory' !== $hook ) {
 		return;
 	}
-	wp_enqueue_style( 'erinv-admin', plugins_url( 'assets/admin.css', __FILE__ ), array(), '0.1.0' );
-	wp_enqueue_script( 'erinv-admin', plugins_url( 'assets/admin.js', __FILE__ ), array(), '0.1.0', true );
+	wp_enqueue_style( 'erinv-admin', plugins_url( 'assets/admin.css', __FILE__ ), array(), '0.1.1' );
+	wp_enqueue_script( 'erinv-admin', plugins_url( 'assets/admin.js', __FILE__ ), array(), '0.1.1', true );
 	wp_localize_script(
 		'erinv-admin',
 		'ERINV',
@@ -112,6 +120,8 @@ function erinv_admin_assets( $hook ) {
 				'error'      => __( 'The request failed. Please retry or reload the page.', 'external-request-inventory' ),
 				/* translators: %s: page address. */
 				'failed'     => __( 'Could not load: %s', 'external-request-inventory' ),
+				/* translators: %s: page address. */
+				'redirect'   => __( 'Not loaded, the address redirects (redirects are not followed): %s', 'external-request-inventory' ),
 				/* translators: %s: address entered by the user. */
 				'foreign'    => __( 'Skipped, not on this site: %s', 'external-request-inventory' ),
 				/* translators: 1: number of hosts, 2: hosts not named in the privacy policy, 3: new hosts. */
@@ -135,7 +145,10 @@ function erinv_admin_assets( $hook ) {
 				'dropped'    => __( '%d further hosts were not stored because the list is full.', 'external-request-inventory' ),
 				'pause'      => __( 'Pause recording', 'external-request-inventory' ),
 				'resume'     => __( 'Resume recording', 'external-request-inventory' ),
+				'clearTitle' => __( 'Clear server log', 'external-request-inventory' ),
 				'confirmClr' => __( 'Delete the recorded server hosts and start a new log?', 'external-request-inventory' ),
+				'clearOk'    => __( 'Clear log', 'external-request-inventory' ),
+				'cancel'     => __( 'Cancel', 'external-request-inventory' ),
 				'types'      => array(
 					'script'        => __( 'script', 'external-request-inventory' ),
 					'style'         => __( 'stylesheet', 'external-request-inventory' ),
@@ -175,10 +188,10 @@ function erinv_admin_page() {
 		<h1><?php esc_html_e( 'External Request Inventory', 'external-request-inventory' ); ?></h1>
 		<p><?php esc_html_e( 'Which external hosts does this site contact? The list combines two sources and checks each host against the privacy policy page.', 'external-request-inventory' ); ?></p>
 		<ul class="erinv-list">
-			<li><?php esc_html_e( 'Server: every request WordPress, a plugin or the theme makes through the WordPress HTTP API, with the component that made it. Recorded from activation on.', 'external-request-inventory' ); ?></li>
+			<li><?php esc_html_e( 'Server: every request WordPress, a plugin or the theme makes through the WordPress HTTP API, with the component that made it. Recorded while the plugin is active and recording is not paused, starting on activation or when the log was last cleared.', 'external-request-inventory' ); ?></li>
 			<li><?php esc_html_e( 'Browser: scripts, stylesheets, fonts, images, iframes, forms and preconnects to other hosts in your public pages, loaded without cookies as a first-time visitor sees them before any consent.', 'external-request-inventory' ); ?></li>
 		</ul>
-		<p><?php esc_html_e( 'Only host names, counts, dates, component names and page paths are stored. No full URLs, query strings or visitor data. The scan loads pages of this site only and never requests an external file.', 'external-request-inventory' ); ?></p>
+		<p><?php esc_html_e( 'Only host names, counts, dates, component names and page paths are stored. No full URLs, query strings or visitor data. The scan loads pages of this site only, does not follow redirects and never requests an external file.', 'external-request-inventory' ); ?></p>
 
 		<h2><?php esc_html_e( 'Browser scan', 'external-request-inventory' ); ?></h2>
 		<p>
@@ -240,7 +253,8 @@ function erinv_ajax_report() {
 function erinv_ajax_save() {
 	erinv_require_admin();
 	check_ajax_referer( 'erinv', 'nonce' );
-	// JSON with host names and decoded page paths; every field is validated again in ERINV_Store.
+	// JSON with host names, resource types and decoded page paths. After decoding, ERINV_Store sanitizes every
+	// value again (sanitize_text_field, sanitize_key) and keeps only valid host names, known types and site paths.
 	$raw   = isset( $_POST['hosts'] ) && is_string( $_POST['hosts'] ) ? json_decode( sanitize_textarea_field( wp_unslash( $_POST['hosts'] ) ), true ) : null;
 	$pages = isset( $_POST['pages'] ) && is_string( $_POST['pages'] ) ? json_decode( sanitize_textarea_field( wp_unslash( $_POST['pages'] ) ), true ) : null;
 	$more  = isset( $_POST['further'] ) && is_string( $_POST['further'] ) ? json_decode( sanitize_textarea_field( wp_unslash( $_POST['further'] ) ), true ) : array();

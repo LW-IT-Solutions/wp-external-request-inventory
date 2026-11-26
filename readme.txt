@@ -4,7 +4,7 @@ Tags: privacy, gdpr, external requests, third party, http api
 Requires at least: 6.2
 Tested up to: 7.2
 Requires PHP: 7.4
-Stable tag: 0.1.0
+Stable tag: 0.1.1
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -18,7 +18,7 @@ wrote down: a font service, a map, a video, an update check, an API a plugin cal
 External Request Inventory collects these hosts from two sides and puts them in one list under Tools > External
 Requests:
 
-* **Server:** every request that WordPress, a plugin or the theme makes through the WordPress HTTP API, with the plugin or theme that made it, how often, when last, and in which context (cron, admin, front end, AJAX, REST API, WP-CLI). Recording starts on activation and can be paused.
+* **Server:** every request that WordPress, a plugin or the theme makes through the WordPress HTTP API, with the plugin or theme that made it, how often, when last, and in which context (cron, admin, front end, AJAX, REST API, WP-CLI). Recording starts on activation, runs while the plugin is active and can be paused.
 * **Browser:** scripts, stylesheets, fonts, images, audio and video, iframes, embeds, form targets and preconnect hints that point to other hosts in your public pages. The scan loads the home page, the privacy policy and the latest posts and pages, plus any further pages of the site you enter. Pages are loaded without cookies, the way a first-time visitor receives them before any consent. Stylesheets of your own site are read as well, so fonts imported from CSS are found.
 
 Each host is checked against the published privacy policy page from Settings > Privacy: is the host, its domain or
@@ -30,13 +30,14 @@ processing activities.
 
 The plugin stores host names, counts, dates, the names of the components that made server requests, and the paths of
 the scanned pages. It never stores full URLs, query strings, request bodies or any visitor data. The browser scan runs
-in the administrator's browser, loads pages of this site only and never requests an external file. The plugin makes no
-external requests and sets no cookies. Uninstalling removes all stored data.
+in the administrator's browser, loads pages of this site only, does not follow redirects and never requests an external
+file. The plugin makes no external requests and sets no cookies. Uninstalling removes all stored data.
 
 = Limits =
 
 * Resources that scripts add after the page has loaded, or only after consent, are not visible to the scan. Hosts written in inline scripts are reported as "named in inline script".
 * Requests that bypass the WordPress HTTP API (for example direct cURL calls) are not recorded.
+* Pages and stylesheets that redirect are not followed. A page that redirects is listed as not loaded; enter its final address instead.
 * The privacy policy check is a text match and a prompt for review, not legal advice.
 * Lists keep up to 300 hosts.
 
@@ -73,6 +74,11 @@ All three options the plugin uses. Nothing else is stored.
 2. Tools > External Requests: browser scan of the public pages and the server-side request log.
 
 == Changelog ==
+
+= 0.1.1 =
+* The browser scan no longer follows redirects, so it never requests another host. Scan data from the browser is sanitized field by field after decoding.
+* The server log starts on activation. Clearing the server log asks for confirmation in a dialog of the page instead of a browser prompt.
+* Plugin description and screen texts state exactly what is stored and when recording runs.
 
 = 0.1.0 =
 * First version: server-side request log, browser scan of public pages, privacy policy check, CSV export.

@@ -133,27 +133,36 @@ class ERINV_Store {
 	 * @return string Component key such as "plugin:woocommerce", or "core".
 	 */
 	private static function component() {
-		$own   = basename( dirname( __DIR__ ) );
-		$roots = array(
-			'plugin'    => wp_normalize_path( WP_PLUGIN_DIR ) . '/',
-			'mu-plugin' => wp_normalize_path( WPMU_PLUGIN_DIR ) . '/',
-			'theme'     => wp_normalize_path( get_theme_root() ) . '/',
-		);
-		$trace = ( new Exception() )->getTrace();
+		static $own = null, $active = null, $theme_root = null;
+		if ( null === $own ) {
+			$own    = strtok( plugin_basename( __DIR__ ), '/' );
+			$active = array();
+			$files  = array_merge( (array) get_option( 'active_plugins', array() ), is_multisite() ? array_keys( (array) get_site_option( 'active_sitewide_plugins', array() ) ) : array() );
+			foreach ( $files as $file ) {
+				$active[ strtok( (string) $file, '/' ) ] = true;
+			}
+			$theme_root = trailingslashit( wp_normalize_path( get_theme_root() ) );
+		}
+		// The call stack is read only to name the plugin or theme of a request. Arguments are not collected,
+		// and only the folder or file name of the component is kept, never a path.
+		$trace = debug_backtrace( DEBUG_BACKTRACE_IGNORE_ARGS ); // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_debug_backtrace -- attribution of HTTP API requests to a component, see above.
 		foreach ( $trace as $frame ) {
 			if ( empty( $frame['file'] ) ) {
 				continue;
 			}
 			$file = wp_normalize_path( $frame['file'] );
-			foreach ( $roots as $type => $root ) {
-				if ( 0 !== strpos( $file, $root ) ) {
+			// plugin_basename() returns the path relative to the plugins or must-use plugins folder, or the path itself.
+			$relative = plugin_basename( $file );
+			if ( trim( $file, '/' ) !== $relative ) {
+				$slug = strtok( $relative, '/' );
+				if ( $slug === $own ) {
 					continue;
 				}
-				$slug = strtok( substr( $file, strlen( $root ) ), '/' );
-				if ( 'plugin' === $type && $slug === $own ) {
-					continue 2;
-				}
-				return $type . ':' . ( 'mu-plugin' === $type ? basename( $slug, '.php' ) : $slug );
+				// Code runs from a plugin folder only while that plugin is active; anything else there is a must-use plugin.
+				return isset( $active[ $slug ] ) ? 'plugin:' . $slug : 'mu-plugin:' . basename( $slug, '.php' );
+			}
+			if ( 0 === strpos( $file, $theme_root ) ) {
+				return 'theme:' . strtok( substr( $file, strlen( $theme_root ) ), '/' );
 			}
 		}
 		return 'core';
@@ -261,11 +270,12 @@ class ERINV_Store {
 			return $hosts;
 		}
 		foreach ( $raw as $host => $info ) {
-			$host = self::clean_host( (string) $host );
+			$host = self::clean_host( sanitize_text_field( (string) $host ) );
 			if ( '' === $host || self::is_own( $host ) || ! is_array( $info ) || count( $hosts ) >= self::MAX_HOSTS ) {
 				continue;
 			}
-			$types = isset( $info['types'] ) && is_array( $info['types'] ) ? array_values( array_intersect( self::TYPES, array_map( 'strval', $info['types'] ) ) ) : array();
+			// Only known resource types are kept.
+			$types = isset( $info['types'] ) && is_array( $info['types'] ) ? array_values( array_intersect( self::TYPES, array_map( 'sanitize_key', array_filter( $info['types'], 'is_string' ) ) ) ) : array();
 			$pages = isset( $info['pages'] ) && is_array( $info['pages'] ) ? self::clean_paths( $info['pages'] ) : array();
 			if ( $types ) {
 				$hosts[ $host ] = array(
@@ -278,15 +288,15 @@ class ERINV_Store {
 		return $hosts;
 	}
 
-	/** Keep site-relative paths only.
+	/** Keep site-relative paths only: sanitized, starting with one slash, without query string or fragment.
 	 * @param array $paths Candidates.
 	 * @return array
 	 */
 	public static function clean_paths( $paths ) {
 		$clean = array();
 		foreach ( $paths as $path ) {
-			$path = is_string( $path ) ? substr( $path, 0, 200 ) : '';
-			if ( '' !== $path && '/' === $path[0] && ( ! isset( $path[1] ) || '/' !== $path[1] ) && ! preg_match( '/[\s<>"\'\\\\]/', $path ) ) {
+			$path = is_string( $path ) ? substr( sanitize_text_field( $path ), 0, 200 ) : '';
+			if ( '' !== $path && '/' === $path[0] && ( ! isset( $path[1] ) || '/' !== $path[1] ) && ! preg_match( '/[\s<>"\'\\\\?#]/', $path ) ) {
 				$clean[] = $path;
 			}
 		}
