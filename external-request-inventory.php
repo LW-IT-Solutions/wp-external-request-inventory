@@ -2,7 +2,7 @@
 /**
  * Plugin Name: External Request Inventory
  * Description: List the external hosts your site contacts: server-side HTTP requests and resources in your public pages, checked against your privacy policy page. Stores host names, counts, dates, component names and page paths, no full URLs or visitor data.
- * Version: 0.1.1
+ * Version: 0.2.0
  * Requires at least: 6.2
  * Requires PHP: 7.4
  * Author: LW IT Solutions
@@ -17,6 +17,7 @@
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
+define( 'ERINV_VERSION', '0.2.0' );
 require_once __DIR__ . '/includes/class-erinv-store.php';
 
 register_activation_hook( __FILE__, 'erinv_activate' );
@@ -98,17 +99,18 @@ function erinv_admin_assets( $hook ) {
 	if ( 'tools_page_external-request-inventory' !== $hook ) {
 		return;
 	}
-	wp_enqueue_style( 'erinv-admin', plugins_url( 'assets/admin.css', __FILE__ ), array(), '0.1.1' );
-	wp_enqueue_script( 'erinv-admin', plugins_url( 'assets/admin.js', __FILE__ ), array(), '0.1.1', true );
+	wp_enqueue_style( 'erinv-admin', plugins_url( 'assets/admin.css', __FILE__ ), array(), ERINV_VERSION );
+	wp_enqueue_script( 'erinv-admin', plugins_url( 'assets/admin.js', __FILE__ ), array(), ERINV_VERSION, true );
 	wp_localize_script(
 		'erinv-admin',
 		'ERINV',
 		array(
-			'url'   => admin_url( 'admin-ajax.php' ),
-			'nonce' => wp_create_nonce( 'erinv' ),
-			'pages' => erinv_scan_urls(),
-			'own'   => array_values( array_unique( array_filter( array( ERINV_Store::host( home_url() ), ERINV_Store::host( site_url() ) ) ) ) ),
-			'text'  => array(
+			'url'     => admin_url( 'admin-ajax.php' ),
+			'nonce'   => wp_create_nonce( 'erinv' ),
+			'pages'   => erinv_scan_urls(),
+			'privacy' => admin_url( 'options-privacy.php' ),
+			'own'     => array_values( array_unique( array_filter( array( ERINV_Store::host( home_url() ), ERINV_Store::host( site_url() ) ) ) ) ),
+			'text'    => array(
 				'loading'    => __( 'Loading…', 'external-request-inventory' ),
 				/* translators: 1: current page number, 2: number of pages, 3: page address. */
 				'scanning'   => __( 'Scanning %1$d of %2$d: %3$s', 'external-request-inventory' ),
@@ -117,6 +119,29 @@ function erinv_admin_assets( $hook ) {
 				/* translators: 1: date and time, 2: number of pages. */
 				'last'       => __( 'Last scan: %1$s, pages: %2$d.', 'external-request-inventory' ),
 				'never'      => __( 'No browser scan yet.', 'external-request-inventory' ),
+				'tileHosts'  => __( 'External hosts', 'external-request-inventory' ),
+				'tileNo'     => __( 'Not named in the privacy policy', 'external-request-inventory' ),
+				'tileNew'    => __( 'New since the previous scan', 'external-request-inventory' ),
+				'tileCover'  => __( 'Named in the privacy policy', 'external-request-inventory' ),
+				/* translators: %s: date and time. */
+				'tileReq'    => __( 'Server requests since %s', 'external-request-inventory' ),
+				'onlyB'      => __( 'Browser only', 'external-request-inventory' ),
+				'onlyS'      => __( 'Server only', 'external-request-inventory' ),
+				'both'       => __( 'Browser and server', 'external-request-inventory' ),
+				'sources'    => __( 'Where the hosts were found', 'external-request-inventory' ),
+				'all'        => __( 'All', 'external-request-inventory' ),
+				'fNo'        => __( 'Not named', 'external-request-inventory' ),
+				'fNew'       => __( 'New', 'external-request-inventory' ),
+				/* translators: 1: number of hosts shown, 2: number of hosts. */
+				'shown'      => __( 'Showing %1$d of %2$d hosts.', 'external-request-inventory' ),
+				'noMatch'    => __( 'No host matches the filter.', 'external-request-inventory' ),
+				'recOn'      => __( 'Recording', 'external-request-inventory' ),
+				'recOff'     => __( 'Paused', 'external-request-inventory' ),
+				'pagesLbl'   => __( 'Pages:', 'external-request-inventory' ),
+				'notes'      => __( 'Not every page could be scanned:', 'external-request-inventory' ),
+				'policyOpen' => __( 'View privacy policy', 'external-request-inventory' ),
+				'policySet'  => __( 'Choose a privacy policy page', 'external-request-inventory' ),
+				'cols'       => array( __( 'Host', 'external-request-inventory' ), __( 'Where', 'external-request-inventory' ), __( 'First seen', 'external-request-inventory' ), __( 'Privacy policy', 'external-request-inventory' ) ),
 				'error'      => __( 'The request failed. Please retry or reload the page.', 'external-request-inventory' ),
 				/* translators: %s: page address. */
 				'failed'     => __( 'Could not load: %s', 'external-request-inventory' ),
@@ -124,8 +149,6 @@ function erinv_admin_assets( $hook ) {
 				'redirect'   => __( 'Not loaded, the address redirects (redirects are not followed): %s', 'external-request-inventory' ),
 				/* translators: %s: address entered by the user. */
 				'foreign'    => __( 'Skipped, not on this site: %s', 'external-request-inventory' ),
-				/* translators: 1: number of hosts, 2: hosts not named in the privacy policy, 3: new hosts. */
-				'summary'    => __( 'External hosts: %1$d. Not named in the privacy policy: %2$d. New since the previous scan: %3$d.', 'external-request-inventory' ),
 				'nopolicy'   => __( 'No published privacy policy page is set under Settings > Privacy, so the policy check is skipped.', 'external-request-inventory' ),
 				'empty'      => __( 'No external hosts recorded yet.', 'external-request-inventory' ),
 				'browser'    => __( 'Browser', 'external-request-inventory' ),
@@ -183,54 +206,86 @@ function erinv_admin_page() {
 	if ( ! current_user_can( 'manage_options' ) ) {
 		return;
 	}
+	$page_count = count( erinv_scan_urls() );
 	?>
 	<div class="wrap erinv-wrap">
-		<h1><?php esc_html_e( 'External Request Inventory', 'external-request-inventory' ); ?></h1>
-		<p><?php esc_html_e( 'Which external hosts does this site contact? The list combines two sources and checks each host against the privacy policy page.', 'external-request-inventory' ); ?></p>
-		<ul class="erinv-list">
-			<li><?php esc_html_e( 'Server: every request WordPress, a plugin or the theme makes through the WordPress HTTP API, with the component that made it. Recorded while the plugin is active and recording is not paused, starting on activation or when the log was last cleared.', 'external-request-inventory' ); ?></li>
-			<li><?php esc_html_e( 'Browser: scripts, stylesheets, fonts, images, iframes, forms and preconnects to other hosts in your public pages, loaded without cookies as a first-time visitor sees them before any consent.', 'external-request-inventory' ); ?></li>
-		</ul>
-		<p><?php esc_html_e( 'Only host names, counts, dates, component names and page paths are stored. No full URLs, query strings or visitor data. The scan loads pages of this site only, does not follow redirects and never requests an external file.', 'external-request-inventory' ); ?></p>
+		<h1 class="erinv-title"><span class="dashicons dashicons-networking" aria-hidden="true"></span> <?php esc_html_e( 'External Request Inventory', 'external-request-inventory' ); ?></h1>
+		<p class="erinv-lead"><?php esc_html_e( 'Which external hosts does this site contact? The list combines two sources and checks each host against the privacy policy page.', 'external-request-inventory' ); ?></p>
+		<details class="erinv-how">
+			<summary><?php esc_html_e( 'How the inventory works', 'external-request-inventory' ); ?></summary>
+			<ul class="erinv-list">
+				<li><?php esc_html_e( 'Server: every request WordPress, a plugin or the theme makes through the WordPress HTTP API, with the component that made it. Recorded while the plugin is active and recording is not paused, starting on activation or when the log was last cleared.', 'external-request-inventory' ); ?></li>
+				<li><?php esc_html_e( 'Browser: scripts, stylesheets, fonts, images, iframes, forms and preconnects to other hosts in your public pages, loaded without cookies as a first-time visitor sees them before any consent.', 'external-request-inventory' ); ?></li>
+			</ul>
+			<p><?php esc_html_e( 'Only host names, counts, dates, component names and page paths are stored. No full URLs, query strings or visitor data. The scan loads pages of this site only, does not follow redirects and never requests an external file.', 'external-request-inventory' ); ?></p>
+		</details>
 
-		<h2><?php esc_html_e( 'Browser scan', 'external-request-inventory' ); ?></h2>
-		<p>
-			<?php
-			/* translators: %d: number of pages. */
-			echo esc_html( sprintf( _n( 'The scan loads %d page: the home page, the privacy policy and the latest posts and pages.', 'The scan loads %d pages: the home page, the privacy policy and the latest posts and pages.', count( erinv_scan_urls() ), 'external-request-inventory' ), count( erinv_scan_urls() ) ) );
-			?>
-		</p>
-		<p>
-			<label for="erinv-extra"><?php esc_html_e( 'Further pages of this site, one address per line (optional, up to 20):', 'external-request-inventory' ); ?></label><br>
-			<textarea id="erinv-extra" rows="3" class="large-text code"><?php echo esc_textarea( implode( "\n", erinv_further_pages() ) ); ?></textarea>
-		</p>
-		<p class="erinv-actions">
-			<button type="button" class="button button-primary" id="erinv-scan"><?php esc_html_e( 'Scan pages', 'external-request-inventory' ); ?></button>
-			<button type="button" class="button" id="erinv-csv" disabled><?php esc_html_e( 'Export as CSV', 'external-request-inventory' ); ?></button>
-		</p>
-		<p id="erinv-status" role="status" aria-live="polite"></p>
+		<section class="erinv-overview" id="erinv-overview" aria-label="<?php esc_attr_e( 'Overview', 'external-request-inventory' ); ?>" hidden></section>
 
-		<h2><?php esc_html_e( 'Server requests', 'external-request-inventory' ); ?></h2>
-		<p id="erinv-recording"></p>
-		<p class="erinv-actions">
-			<button type="button" class="button" id="erinv-toggle"></button>
-			<button type="button" class="button" id="erinv-clear"><?php esc_html_e( 'Clear server log', 'external-request-inventory' ); ?></button>
-		</p>
+		<div class="erinv-panels">
+			<section class="erinv-card" aria-labelledby="erinv-scan-title">
+				<h2 id="erinv-scan-title"><span class="dashicons dashicons-search" aria-hidden="true"></span> <?php esc_html_e( 'Browser scan', 'external-request-inventory' ); ?></h2>
+				<p>
+					<?php
+					/* translators: %d: number of pages. */
+					echo esc_html( sprintf( _n( 'The scan loads %d page: the home page, the privacy policy and the latest posts and pages.', 'The scan loads %d pages: the home page, the privacy policy and the latest posts and pages.', $page_count, 'external-request-inventory' ), $page_count ) );
+					?>
+				</p>
+				<p>
+					<label for="erinv-extra"><?php esc_html_e( 'Further pages of this site, one address per line (optional, up to 20):', 'external-request-inventory' ); ?></label><br>
+					<textarea id="erinv-extra" rows="3" class="large-text code"><?php echo esc_textarea( implode( "\n", erinv_further_pages() ) ); ?></textarea>
+				</p>
+				<p class="erinv-actions">
+					<button type="button" class="button button-primary" id="erinv-scan"><?php esc_html_e( 'Scan pages', 'external-request-inventory' ); ?></button>
+					<button type="button" class="button" id="erinv-csv" disabled><?php esc_html_e( 'Export as CSV', 'external-request-inventory' ); ?></button>
+					<span class="spinner" id="erinv-spinner"></span>
+				</p>
+				<div class="erinv-progress" id="erinv-progress-wrap" hidden>
+					<progress id="erinv-progress" max="1" value="0" aria-labelledby="erinv-status"></progress>
+				</div>
+				<div id="erinv-status" class="erinv-status" role="status" aria-live="polite"></div>
+			</section>
 
-		<h2><?php esc_html_e( 'External hosts', 'external-request-inventory' ); ?></h2>
-		<p id="erinv-summary"></p>
-		<div class="erinv-table">
-			<table class="widefat striped">
-				<thead><tr>
-					<th scope="col"><?php esc_html_e( 'Host', 'external-request-inventory' ); ?></th>
-					<th scope="col"><?php esc_html_e( 'Where', 'external-request-inventory' ); ?></th>
-					<th scope="col"><?php esc_html_e( 'First seen', 'external-request-inventory' ); ?></th>
-					<th scope="col"><?php esc_html_e( 'Privacy policy', 'external-request-inventory' ); ?></th>
-				</tr></thead>
-				<tbody id="erinv-results"></tbody>
-			</table>
+			<section class="erinv-card" aria-labelledby="erinv-server-title">
+				<h2 id="erinv-server-title"><span class="dashicons dashicons-cloud" aria-hidden="true"></span> <?php esc_html_e( 'Server requests', 'external-request-inventory' ); ?></h2>
+				<div id="erinv-recording" class="erinv-recording"></div>
+				<p class="erinv-actions">
+					<button type="button" class="button" id="erinv-toggle"></button>
+					<button type="button" class="button erinv-button-delete" id="erinv-clear"><?php esc_html_e( 'Clear server log', 'external-request-inventory' ); ?></button>
+				</p>
+			</section>
 		</div>
-		<p><?php esc_html_e( 'Limits: resources that scripts add after the page has loaded, or only after consent, are not visible to the scan. Requests that bypass the WordPress HTTP API are not recorded. "Named" means the host, its domain or the service name appears in the policy text; it is a prompt for review, not legal advice.', 'external-request-inventory' ); ?></p>
+
+		<section class="erinv-card erinv-hosts" aria-labelledby="erinv-hosts-title">
+			<h2 id="erinv-hosts-title"><span class="dashicons dashicons-admin-site-alt3" aria-hidden="true"></span> <?php esc_html_e( 'External hosts', 'external-request-inventory' ); ?></h2>
+			<div id="erinv-summary"></div>
+			<div class="erinv-toolbar" id="erinv-toolbar" hidden>
+				<div class="erinv-search">
+					<label for="erinv-search"><?php esc_html_e( 'Filter hosts', 'external-request-inventory' ); ?></label>
+					<input type="search" id="erinv-search" class="regular-text" autocomplete="off" spellcheck="false">
+				</div>
+				<div class="erinv-filters" id="erinv-filters" role="group" aria-label="<?php esc_attr_e( 'Show', 'external-request-inventory' ); ?>"></div>
+			</div>
+			<div class="erinv-table" id="erinv-table">
+				<table class="widefat striped">
+					<thead><tr>
+						<th scope="col"><?php esc_html_e( 'Host', 'external-request-inventory' ); ?></th>
+						<th scope="col"><?php esc_html_e( 'Where', 'external-request-inventory' ); ?></th>
+						<th scope="col"><?php esc_html_e( 'First seen', 'external-request-inventory' ); ?></th>
+						<th scope="col"><?php esc_html_e( 'Privacy policy', 'external-request-inventory' ); ?></th>
+					</tr></thead>
+					<tbody id="erinv-results"></tbody>
+				</table>
+			</div>
+			<p id="erinv-shown" class="erinv-shown" aria-live="polite"></p>
+			<div id="erinv-empty" class="erinv-empty" hidden>
+				<span class="dashicons dashicons-search" aria-hidden="true"></span>
+				<p class="erinv-empty-title"><?php esc_html_e( 'No external hosts recorded yet.', 'external-request-inventory' ); ?></p>
+				<p><?php esc_html_e( 'Scan the public pages to list the hosts they load. Server requests appear here as WordPress, plugins and the theme make them, for example update checks after a day.', 'external-request-inventory' ); ?></p>
+				<p><button type="button" class="button button-primary" id="erinv-empty-scan"><?php esc_html_e( 'Scan pages', 'external-request-inventory' ); ?></button></p>
+			</div>
+		</section>
+		<p class="erinv-limits"><span class="dashicons dashicons-info-outline" aria-hidden="true"></span> <?php esc_html_e( 'Limits: resources that scripts add after the page has loaded, or only after consent, are not visible to the scan. Requests that bypass the WordPress HTTP API are not recorded. "Named" means the host, its domain or the service name appears in the policy text; it is a prompt for review, not legal advice.', 'external-request-inventory' ); ?></p>
 	</div>
 	<?php
 }

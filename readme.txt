@@ -4,7 +4,7 @@ Tags: privacy, gdpr, external requests, third party, http api
 Requires at least: 6.2
 Tested up to: 7.2
 Requires PHP: 7.4
-Stable tag: 0.1.1
+Stable tag: 0.2.0
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -74,6 +74,15 @@ All three options the plugin uses. Nothing else is stored.
 2. Tools > External Requests: browser scan of the public pages and the server-side request log.
 
 == Changelog ==
+
+= 0.2.0 =
+* Overview above the list: tiles for hosts, hosts not named in the privacy policy, new hosts and server requests, a ring for the share the privacy policy names, and a bar that shows where the hosts were found.
+* The host list can be filtered by text and by state (not named, new, browser, server), with counts on each filter.
+* Resource types and request contexts appear as labels, the privacy policy check as a coloured badge with an icon, and each server host shows a bar for its number of requests.
+* The scan shows a progress bar and a spinner; pages that could not be scanned are listed in a warning box.
+* Browser scan and server log are side by side as cards; the recording state is shown as a badge.
+* An empty list explains what to do next and offers the scan; on small screens each table cell carries its column name.
+* No change to what is scanned, stored or sent.
 
 = 0.1.1 =
 * The browser scan no longer follows redirects, so it never requests another host. Scan data from the browser is sanitized field by field after decoding.
