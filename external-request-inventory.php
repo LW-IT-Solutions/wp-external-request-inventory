@@ -2,7 +2,7 @@
 /**
  * Plugin Name: External Request Inventory
  * Description: List the external hosts your site contacts: server-side HTTP requests and resources in your public pages, checked against your privacy policy page. Stores host names, counts, dates, component names and page paths, no full URLs or visitor data.
- * Version: 0.2.0
+ * Version: 0.3.0
  * Requires at least: 6.2
  * Requires PHP: 7.4
  * Author: LW IT Solutions
@@ -17,7 +17,7 @@
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
-define( 'ERINV_VERSION', '0.2.0' );
+define( 'ERINV_VERSION', '0.3.0' );
 require_once __DIR__ . '/includes/class-erinv-store.php';
 
 register_activation_hook( __FILE__, 'erinv_activate' );
@@ -172,6 +172,47 @@ function erinv_admin_assets( $hook ) {
 				'confirmClr' => __( 'Delete the recorded server hosts and start a new log?', 'external-request-inventory' ),
 				'clearOk'    => __( 'Clear log', 'external-request-inventory' ),
 				'cancel'     => __( 'Cancel', 'external-request-inventory' ),
+				'flowB'      => __( 'Visitors\' browsers', 'external-request-inventory' ),
+				'flowS'      => __( 'Server (WordPress)', 'external-request-inventory' ),
+				/* translators: %d: number of hosts. */
+				'flowMore'   => __( '+ %d more hosts in the list below', 'external-request-inventory' ),
+				/* translators: 1: host name, 2: where it was found, 3: privacy policy state. */
+				'flowHost'   => __( '%1$s – %2$s – %3$s. Show in the list.', 'external-request-inventory' ),
+				'flowYes'    => __( 'named in the privacy policy', 'external-request-inventory' ),
+				'flowNo'     => __( 'not named in the privacy policy', 'external-request-inventory' ),
+				'flowNa'     => __( 'privacy policy not checked', 'external-request-inventory' ),
+				/* translators: 1: page number, 2: number of pages. */
+				'stepOf'     => __( 'Page %1$d of %2$d', 'external-request-inventory' ),
+				'stepWait'   => __( 'waiting', 'external-request-inventory' ),
+				'stepNow'    => __( 'loading …', 'external-request-inventory' ),
+				'stepFail'   => __( 'not scanned', 'external-request-inventory' ),
+				'stepNone'   => __( 'no external host', 'external-request-inventory' ),
+				/* translators: %d: number of hosts. */
+				'stepHosts'  => __( '%d external hosts', 'external-request-inventory' ),
+				'stepOne'    => __( '1 external host', 'external-request-inventory' ),
+				/* translators: %d: number of hosts. */
+				'stepNew'    => __( '%d not seen on earlier pages', 'external-request-inventory' ),
+				'copied'     => __( 'Copied to the clipboard.', 'external-request-inventory' ),
+				'copyNone'   => __( 'Every host is named in the privacy policy; there is nothing to copy.', 'external-request-inventory' ),
+				'copyFail'   => __( 'Copying was not possible. The text is selected below and can be copied with Ctrl+C.', 'external-request-inventory' ),
+				/* translators: 1: site name, 2: date. */
+				'copyHead'   => __( 'External hosts not named in the privacy policy (%1$s, %2$s)', 'external-request-inventory' ),
+				/* translators: %s: resource types. */
+				'copyB'      => __( 'Browser: %s', 'external-request-inventory' ),
+				/* translators: %s: pages. */
+				'copyPages'  => __( 'on %s', 'external-request-inventory' ),
+				/* translators: 1: number of requests, 2: components. */
+				'copyS'      => __( 'Server: %1$d requests by %2$s', 'external-request-inventory' ),
+				/* translators: %s: components. */
+				'copyS1'     => __( 'Server: 1 request by %s', 'external-request-inventory' ),
+				'today'      => wp_date( get_option( 'date_format' ) ),
+				'site'       => get_bloginfo( 'name' ),
+				/* translators: %d: number of hosts. */
+				'chNew'      => __( '%d hosts appeared since the previous scan', 'external-request-inventory' ),
+				'chOne'      => __( '1 host appeared since the previous scan', 'external-request-inventory' ),
+				'chNo'       => __( 'not named', 'external-request-inventory' ),
+				/* translators: %s: host name. */
+				'chJump'     => __( 'Show %s in the list', 'external-request-inventory' ),
 				'types'      => array(
 					'script'        => __( 'script', 'external-request-inventory' ),
 					'style'         => __( 'stylesheet', 'external-request-inventory' ),
@@ -222,6 +263,19 @@ function erinv_admin_page() {
 
 		<section class="erinv-overview" id="erinv-overview" aria-label="<?php esc_attr_e( 'Overview', 'external-request-inventory' ); ?>" hidden></section>
 
+		<section class="erinv-changes" id="erinv-changes" aria-labelledby="erinv-changes-title" hidden>
+			<h2 id="erinv-changes-title" class="erinv-changes-title"></h2>
+			<p class="erinv-changes-lead"><?php esc_html_e( 'A plugin, theme or embed added since then may load them. Each host leads to its row in the list.', 'external-request-inventory' ); ?></p>
+			<ul class="erinv-changes-list" id="erinv-changes-list"></ul>
+		</section>
+
+		<section class="erinv-card erinv-flow-card" id="erinv-flow-card" aria-labelledby="erinv-flow-title" hidden>
+			<h2 id="erinv-flow-title"><span class="dashicons dashicons-randomize" aria-hidden="true"></span> <?php esc_html_e( 'Where data flows', 'external-request-inventory' ); ?></h2>
+			<p class="erinv-muted"><?php esc_html_e( 'Each line connects a source with an external host. Red: the host is not named in the privacy policy, green: it is named. Selecting a host shows its row in the list.', 'external-request-inventory' ); ?></p>
+			<div class="erinv-flow" id="erinv-flow"></div>
+			<svg id="erinv-flow-template" class="erinv-flow-lines" aria-hidden="true" focusable="false" hidden></svg>
+		</section>
+
 		<div class="erinv-panels">
 			<section class="erinv-card" aria-labelledby="erinv-scan-title">
 				<h2 id="erinv-scan-title"><span class="dashicons dashicons-search" aria-hidden="true"></span> <?php esc_html_e( 'Browser scan', 'external-request-inventory' ); ?></h2>
@@ -244,6 +298,7 @@ function erinv_admin_page() {
 					<progress id="erinv-progress" max="1" value="0" aria-labelledby="erinv-status"></progress>
 				</div>
 				<div id="erinv-status" class="erinv-status" role="status" aria-live="polite"></div>
+				<ol class="erinv-steps" id="erinv-steps" aria-label="<?php esc_attr_e( 'Pages of the last scan', 'external-request-inventory' ); ?>" hidden></ol>
 			</section>
 
 			<section class="erinv-card" aria-labelledby="erinv-server-title">
@@ -262,7 +317,10 @@ function erinv_admin_page() {
 			<div class="erinv-toolbar" id="erinv-toolbar" hidden>
 				<div class="erinv-search">
 					<label for="erinv-search"><?php esc_html_e( 'Filter hosts', 'external-request-inventory' ); ?></label>
-					<input type="search" id="erinv-search" class="regular-text" autocomplete="off" spellcheck="false">
+					<span class="erinv-search-field">
+						<input type="search" id="erinv-search" class="regular-text" autocomplete="off" spellcheck="false" aria-describedby="erinv-search-key" placeholder="<?php esc_attr_e( 'Host or service', 'external-request-inventory' ); ?>">
+						<kbd id="erinv-search-key" title="<?php esc_attr_e( 'Press / to filter', 'external-request-inventory' ); ?>"><span aria-hidden="true">/</span><span class="screen-reader-text"><?php esc_html_e( 'Press / to filter', 'external-request-inventory' ); ?></span></kbd>
+					</span>
 				</div>
 				<div class="erinv-filters" id="erinv-filters" role="group" aria-label="<?php esc_attr_e( 'Show', 'external-request-inventory' ); ?>"></div>
 			</div>
@@ -278,6 +336,12 @@ function erinv_admin_page() {
 				</table>
 			</div>
 			<p id="erinv-shown" class="erinv-shown" aria-live="polite"></p>
+			<div class="erinv-copy-box" id="erinv-copy-box" hidden>
+				<button type="button" class="button" id="erinv-copy"><span class="dashicons dashicons-clipboard" aria-hidden="true"></span><span><?php esc_html_e( 'Copy hosts not named as text', 'external-request-inventory' ); ?></span></button>
+				<span class="erinv-muted"><?php esc_html_e( 'A list with service, resource types, pages and components, as a starting point for the privacy policy.', 'external-request-inventory' ); ?></span>
+				<p class="erinv-copy-status" id="erinv-copy-status" role="status" aria-live="polite"></p>
+				<textarea class="erinv-copy-area" id="erinv-copy-area" readonly hidden aria-label="<?php esc_attr_e( 'Hosts not named as text', 'external-request-inventory' ); ?>"></textarea>
+			</div>
 			<div id="erinv-empty" class="erinv-empty" hidden>
 				<span class="dashicons dashicons-search" aria-hidden="true"></span>
 				<p class="erinv-empty-title"><?php esc_html_e( 'No external hosts recorded yet.', 'external-request-inventory' ); ?></p>

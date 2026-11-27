@@ -4,7 +4,7 @@ Tags: privacy, gdpr, external requests, third party, http api
 Requires at least: 6.2
 Tested up to: 7.2
 Requires PHP: 7.4
-Stable tag: 0.2.0
+Stable tag: 0.3.0
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -74,6 +74,15 @@ All three options the plugin uses. Nothing else is stored.
 2. Tools > External Requests: browser scan of the public pages and the server-side request log.
 
 == Changelog ==
+
+= 0.3.0 =
+* New diagram "Where data flows": the visitors' browsers and the server on one side, the external hosts on the other, with red lines for hosts the privacy policy does not name. Selecting a host shows its row in the list.
+* Hosts that appeared since the previous scan are listed above the report, each leading to its row.
+* The scan shows a live checklist of its pages with the number of external hosts each page loads.
+* The host filter marks its hits and can be reached with the "/" key; Escape clears it.
+* "Copy hosts not named as text" copies the hosts the privacy policy does not name, with service, resource types, pages and components.
+* The numbers of the overview count up and the lines of the diagram are drawn once; with reduced motion they appear at once.
+* No change to what is scanned, stored or sent.
 
 = 0.2.0 =
 * Overview above the list: tiles for hosts, hosts not named in the privacy policy, new hosts and server requests, a ring for the share the privacy policy names, and a bar that shows where the hosts were found.

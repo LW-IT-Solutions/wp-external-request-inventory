@@ -23,6 +23,16 @@
     const spinner = document.getElementById('erinv-spinner');
     const progressWrap = document.getElementById('erinv-progress-wrap');
     const progress = document.getElementById('erinv-progress');
+    const steps = document.getElementById('erinv-steps');
+    const flowCard = document.getElementById('erinv-flow-card');
+    const flowBox = document.getElementById('erinv-flow');
+    const changes = document.getElementById('erinv-changes');
+    const copyBox = document.getElementById('erinv-copy-box');
+    const copyButton = document.getElementById('erinv-copy');
+    const copyStatus = document.getElementById('erinv-copy-status');
+    const copyArea = document.getElementById('erinv-copy-area');
+    const still = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    let counted = false, flowObs = null;
     const FONT = /\.(woff2?|ttf|otf|eot)(\?|#|$)/i;
     // JSON blocks hold configuration that scripts load from (for example the emoji CDN); structured data (ld+json) is never loaded.
     const SCRIPT_TYPES = ['', 'text/javascript', 'application/javascript', 'module', 'application/json', 'importmap'];
@@ -174,7 +184,13 @@
         const {list, notes, further} = pagesToScan();
         setBusy(true, list.length);
         let failed = 0;
+        let current = null;
+        const items = stepsStart(list);
         const add = (host, type, page) => {
+            if (current) {
+                if (!hosts.has(host)) current.fresh++;
+                current.hosts.add(host);
+            }
             if (!hosts.has(host)) hosts.set(host, {types: new Set(), pages: new Set()});
             const entry = hosts.get(host);
             entry.types.add(type);
@@ -184,12 +200,15 @@
             for (let i = 0; i < list.length; i++) {
                 status.replaceChildren(el('p', fmt(T.scanning, i + 1, list.length, list[i]), 'erinv-status-line'));
                 progress.value = i;
+                current = {hosts: new Set(), fresh: 0};
+                stepSet(items[i], 'now');
                 try {
                     // Redirects are not followed, so the browser never requests an address on another host.
                     const response = await fetch(list[i], {credentials: 'omit', cache: 'no-store', redirect: 'manual'});
                     if (response.type === 'opaqueredirect') {
                         failed++;
                         notes.push(fmt(T.redirect, list[i]));
+                        stepSet(items[i], 'fail');
                         continue;
                     }
                     if (!response.ok || !/html/i.test(response.headers.get('content-type') || '')) throw new Error('page');
@@ -198,11 +217,14 @@
                     const page = path(base);
                     pages.push(page);
                     collect(new DOMParser().parseFromString(html, 'text/html'), base, page, add, ownCss);
+                    stepSet(items[i], 'done', current);
                 } catch (_) {
                     failed++;
                     notes.push(fmt(T.failed, list[i]));
+                    stepSet(items[i], 'fail');
                 }
             }
+            current = null;
             progress.value = list.length;
             for (const href of Array.from(ownCss).slice(0, 20)) {
                 try {
@@ -227,6 +249,223 @@
             setBusy(false);
             scanResult(error.message, []);
         }
+    }
+
+    /* Live checklist of the scan: one line per page with its state and the hosts it loads. */
+    function stepsStart(list) {
+        steps.replaceChildren();
+        steps.hidden = false;
+        return list.map((href, i) => {
+            const li = el('li', undefined, 'erinv-step is-wait');
+            let label = href;
+            try { const u = new URL(href); label = path(u) + u.search; } catch (_) { /* keep the address */ }
+            const mark = el('span', undefined, 'erinv-step-mark');
+            mark.setAttribute('aria-hidden', 'true');
+            const name = el('span', label, 'erinv-step-page');
+            name.title = href;
+            const state = el('span', T.stepWait, 'erinv-step-state');
+            li.append(mark, el('span', fmt(T.stepOf, i + 1, list.length) + ': ', 'screen-reader-text'), name, state);
+            steps.append(li);
+            return li;
+        });
+    }
+
+    function stepSet(li, kind, found) {
+        if (!li) return;
+        li.className = 'erinv-step is-' + kind;
+        const state = li.querySelector('.erinv-step-state');
+        if (kind === 'now') {
+            state.textContent = T.stepNow;
+            // Keep the current line visible inside the list without moving the page.
+            const top = li.offsetTop - steps.offsetTop;
+            if (top < steps.scrollTop || top + li.offsetHeight > steps.scrollTop + steps.clientHeight) steps.scrollTop = top - steps.clientHeight / 2;
+        } else if (kind === 'fail') {
+            state.textContent = T.stepFail;
+        } else {
+            const n = found ? found.hosts.size : 0;
+            state.replaceChildren(el('span', n ? (n === 1 ? T.stepOne : fmt(T.stepHosts, n)) : T.stepNone, n ? 'erinv-step-n' : ''));
+            if (found && found.fresh && found.fresh < n) state.append(el('span', ' · ' + fmt(T.stepNew, found.fresh), 'erinv-step-fresh'));
+        }
+    }
+
+    /* Numbers of the tiles count up once when the report first appears. */
+    function countUp(root) {
+        if (counted || still || !window.requestAnimationFrame) return;
+        counted = true;
+        const nodes = Array.prototype.filter.call(root.querySelectorAll('.erinv-tile-n'), n => /^\d+( %)?$/.test(n.textContent));
+        const ringNode = root.querySelector('.erinv-ring');
+        const ringEnd = ringNode ? parseFloat(ringNode.style.getPropertyValue('--erinv-share')) || 0 : 0;
+        const ends = nodes.map(n => [n, parseInt(n.textContent, 10), / %$/.test(n.textContent) ? ' %' : '']);
+        const t0 = performance.now();
+        function step(t) {
+            const p = Math.min(1, Math.max(0, (t - t0) / 700));
+            const e = 1 - Math.pow(1 - p, 3);
+            ends.forEach(([n, end, suffix]) => { n.textContent = Math.round(end * e) + suffix; });
+            if (ringNode) ringNode.style.setProperty('--erinv-share', (ringEnd * e).toFixed(1) + '%');
+            if (p < 1) window.requestAnimationFrame(step);
+        }
+        window.requestAnimationFrame(step);
+    }
+
+    /* Jump to the row of a host: the list shows it, it is scrolled into view, marked briefly and focused. */
+    function jump(host) {
+        filter = 'all';
+        filters.querySelectorAll('.erinv-filter').forEach(b => b.setAttribute('aria-pressed', b.dataset.filter === 'all' ? 'true' : 'false'));
+        search.value = host;
+        applyFilter();
+        const i = report.rows.findIndex(r => r.host === host);
+        const tr = body.rows[i];
+        if (!tr) return;
+        tr.tabIndex = -1;
+        tr.scrollIntoView({block: 'center', behavior: still ? 'auto' : 'smooth'});
+        tr.focus({preventScroll: true});
+        tr.classList.remove('erinv-flash');
+        void tr.offsetWidth;
+        tr.classList.add('erinv-flash');
+        setTimeout(() => tr.classList.remove('erinv-flash'), 2400);
+    }
+
+    function policyWord(row) {
+        return row.policy === null ? T.flowNa : (row.policy ? T.flowYes : T.flowNo);
+    }
+
+    function policyClass(row) {
+        return row.policy === null ? 'is-na' : (row.policy ? 'is-yes' : 'is-no');
+    }
+
+    /* Data flow: the two sources on the left, the hosts on the right, one curve per connection. */
+    function renderFlow(rows) {
+        flowBox.replaceChildren();
+        flowCard.hidden = !rows.length;
+        if (!rows.length) return;
+        const list = rows.slice(0, 14);
+        // The empty SVG comes from the page (template in the markup); paths are made in its namespace.
+        const svg = document.getElementById('erinv-flow-template').cloneNode(false);
+        svg.removeAttribute('id');
+        svg.removeAttribute('hidden');
+        const sources = el('div', undefined, 'erinv-flow-sources');
+        const nodes = {};
+        [['browser', T.flowB, rows.filter(r => r.browser).length, 'admin-site-alt3'], ['server', T.flowS, rows.filter(r => r.server).length, 'cloud']].forEach(([key, label, n, ic]) => {
+            if (!n) return;
+            const node = el('div', undefined, 'erinv-flow-source erinv-flow-' + key);
+            node.dataset.source = key;
+            node.append(icon(ic), el('span', label, 'erinv-flow-source-l'), el('span', String(n), 'erinv-flow-source-n'));
+            sources.append(node);
+            nodes[key] = node;
+        });
+        const hostsCol = el('ul', undefined, 'erinv-flow-hosts');
+        const links = [];
+        list.forEach(row => {
+            const li = el('li');
+            const b = el('button', undefined, 'erinv-flow-host ' + policyClass(row));
+            b.type = 'button';
+            b.dataset.host = row.host;
+            const where = [row.browser ? T.browser : '', row.server ? T.server : ''].filter(Boolean).join(' + ');
+            b.setAttribute('aria-label', fmt(T.flowHost, row.host, where, policyWord(row)));
+            b.append(el('span', undefined, 'erinv-flow-dot'), el('span', row.host, 'erinv-flow-name'));
+            if (row.service) b.append(el('span', row.service, 'erinv-flow-service'));
+            b.addEventListener('click', () => jump(row.host));
+            li.append(b);
+            hostsCol.append(li);
+            if (row.browser && nodes.browser) links.push({from: 'browser', host: b, row, w: Math.min(7, 1.5 + row.browser.types.length)});
+            if (row.server && nodes.server) links.push({from: 'server', host: b, row, w: Math.min(7, 1.5 + Math.log2(row.server.count + 1))});
+        });
+        const grid = el('div', undefined, 'erinv-flow-grid');
+        grid.append(svg, sources, hostsCol);
+        flowBox.append(grid);
+        if (rows.length > list.length) flowBox.append(el('p', fmt(T.flowMore, rows.length - list.length), 'erinv-muted erinv-flow-more'));
+
+        function draw() {
+            const box = grid.getBoundingClientRect();
+            svg.setAttribute('viewBox', '0 0 ' + Math.round(box.width) + ' ' + Math.round(box.height));
+            svg.setAttribute('width', Math.round(box.width));
+            svg.setAttribute('height', Math.round(box.height));
+            svg.replaceChildren();
+            links.forEach((link, i) => {
+                const a = nodes[link.from].getBoundingClientRect();
+                const c = link.host.getBoundingClientRect();
+                const x1 = a.right - box.left, y1 = a.top + a.height / 2 - box.top;
+                const x2 = c.left - box.left, y2 = c.top + c.height / 2 - box.top;
+                const mid = (x1 + x2) / 2;
+                const p = document.createElementNS(svg.namespaceURI, 'path');
+                p.setAttribute('d', 'M' + x1.toFixed(1) + ' ' + y1.toFixed(1) + ' C' + mid.toFixed(1) + ' ' + y1.toFixed(1) + ' ' + mid.toFixed(1) + ' ' + y2.toFixed(1) + ' ' + x2.toFixed(1) + ' ' + y2.toFixed(1));
+                p.setAttribute('pathLength', '1');
+                p.setAttribute('class', 'erinv-flow-line ' + policyClass(link.row) + ' from-' + link.from);
+                p.setAttribute('stroke-width', link.w.toFixed(1));
+                p.style.animationDelay = (i * 40) + 'ms';
+                p.dataset.host = link.row.host;
+                svg.append(p);
+            });
+        }
+        draw();
+        if (flowObs) flowObs.disconnect();
+        if (window.ResizeObserver) {
+            flowObs = new ResizeObserver(() => draw());
+            flowObs.observe(grid);
+        }
+
+        // Hover or focus on a host or a source highlights its lines.
+        function hot(on, test) {
+            grid.classList.toggle('has-hot', on);
+            svg.querySelectorAll('.erinv-flow-line').forEach(p => p.classList.toggle('is-hot', on && test(p)));
+        }
+        hostsCol.querySelectorAll('.erinv-flow-host').forEach(b => {
+            const test = p => p.dataset.host === b.dataset.host;
+            ['mouseenter', 'focus'].forEach(e => b.addEventListener(e, () => hot(true, test)));
+            ['mouseleave', 'blur'].forEach(e => b.addEventListener(e, () => hot(false, test)));
+        });
+        Object.keys(nodes).forEach(key => {
+            const test = p => p.classList.contains('from-' + key);
+            nodes[key].addEventListener('mouseenter', () => hot(true, test));
+            nodes[key].addEventListener('mouseleave', () => hot(false, test));
+        });
+    }
+
+    /* Hosts that are new since the previous scan, each a link to its row. */
+    function renderChanges(rows) {
+        const fresh = rows.filter(r => r.new);
+        changes.hidden = !fresh.length;
+        if (!fresh.length) return;
+        changes.querySelector('.erinv-changes-title').textContent = fresh.length === 1 ? T.chOne : fmt(T.chNew, fresh.length);
+        const list = document.getElementById('erinv-changes-list');
+        list.replaceChildren();
+        fresh.forEach(row => {
+            const b = el('button', undefined, 'erinv-change ' + policyClass(row));
+            b.type = 'button';
+            b.setAttribute('aria-label', fmt(T.chJump, row.host) + (row.policy === false ? ' (' + T.chNo + ')' : ''));
+            b.append(el('span', row.host, 'erinv-change-host'));
+            if (row.service) b.append(el('span', row.service, 'erinv-change-service'));
+            if (row.policy === false) b.append(el('span', T.chNo, 'erinv-change-no'));
+            b.addEventListener('click', () => jump(row.host));
+            const li = el('li');
+            li.append(b);
+            list.append(li);
+        });
+    }
+
+    /* Search hits are marked in the host name and the service name. */
+    function markText(node, text, query) {
+        if (!node) return;
+        node.replaceChildren();
+        const low = text.toLowerCase();
+        let i = 0, at;
+        while (query && (at = low.indexOf(query, i)) !== -1) {
+            node.append(text.slice(i, at), el('mark', text.slice(at, at + query.length), 'erinv-hit'));
+            i = at + query.length;
+        }
+        node.append(text.slice(i));
+    }
+
+    /* Hosts not named in the privacy policy as plain text, as a starting point for the policy. */
+    function copyText() {
+        const lines = [fmt(T.copyHead, T.site, T.today), ''];
+        const rows = report.rows.filter(r => r.policy === false);
+        rows.forEach(r => {
+            lines.push(r.host + (r.service ? ' (' + r.service + ')' : ''));
+            if (r.browser) lines.push('  - ' + fmt(T.copyB, r.browser.types.map(t => T.types[t] || t).join(', ')) + (r.browser.pages.length ? ' ' + fmt(T.copyPages, r.browser.pages.join(', ')) : ''));
+            if (r.server) lines.push('  - ' + (r.server.count === 1 ? fmt(T.copyS1, r.server.sources.join(', ')) : fmt(T.copyS, r.server.count, r.server.sources.join(', '))));
+        });
+        return rows.length ? lines.join('\n') + '\n' : '';
     }
 
     /* Small chips for resource types and contexts. */
@@ -407,9 +646,12 @@
         const query = search.value.trim().toLowerCase();
         let count = 0;
         Array.prototype.forEach.call(body.rows, (tr, i) => {
-            const show = matches(report.rows[i], query);
+            const row = report.rows[i];
+            const show = matches(row, query);
             tr.hidden = !show;
             if (show) count++;
+            markText(tr.querySelector('.erinv-host-name'), row.host, show ? query : '');
+            markText(tr.querySelector('.erinv-service'), row.service || '', show ? query : '');
         });
         const total = report.rows.length;
         shown.textContent = count ? (count < total ? fmt(T.shown, count, total) : '') : T.noMatch;
@@ -425,10 +667,10 @@
             const host = el('td');
             host.dataset.label = T.cols[0];
             const name = el('div', undefined, 'erinv-host');
-            name.append(el('strong', row.host));
+            name.append(el('strong', row.host, 'erinv-host-name'));
             if (row.new) name.append(' ', el('span', T.new, 'erinv-badge'));
             host.append(name);
-            if (row.service) host.append(el('div', row.service, 'erinv-muted'));
+            if (row.service) host.append(el('div', row.service, 'erinv-muted erinv-service'));
             const first = el('td', row.first);
             first.dataset.label = T.cols[2];
             tr.append(host, where(row, maxCount), first, policyBadge(row));
@@ -438,8 +680,14 @@
         toolbar.hidden = !rows.length;
         empty.hidden = !!rows.length;
         renderOverview(rows);
+        countUp(overview);
+        renderChanges(rows);
+        renderFlow(rows);
         renderFilters(rows);
         applyFilter();
+        copyBox.hidden = !rows.length;
+        copyStatus.textContent = '';
+        copyArea.hidden = true;
         summary.replaceChildren();
         if (!report.policy_url) {
             const box = el('div', undefined, 'notice notice-info inline');
@@ -509,6 +757,46 @@
     scanButton.addEventListener('click', scan);
     document.getElementById('erinv-empty-scan').addEventListener('click', () => { scanButton.focus(); scan(); });
     search.addEventListener('input', applyFilter);
+    search.addEventListener('keydown', e => {
+        if (e.key === 'Escape' && search.value) {
+            e.preventDefault();
+            search.value = '';
+            applyFilter();
+        }
+    });
+    document.addEventListener('keydown', e => {
+        const t = e.target;
+        const typing = t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName));
+        if (e.key === '/' && !typing && !e.ctrlKey && !e.metaKey && !e.altKey && !toolbar.hidden && !document.querySelector('.erinv-dialog')) {
+            e.preventDefault();
+            search.focus();
+            search.select();
+        }
+    });
+    copyButton.addEventListener('click', () => {
+        const text = copyText();
+        copyArea.hidden = true;
+        if (!text) {
+            copyStatus.textContent = T.copyNone;
+            return;
+        }
+        const fallback = () => {
+            copyStatus.textContent = T.copyFail;
+            copyArea.value = text;
+            copyArea.hidden = false;
+            copyArea.focus();
+            copyArea.select();
+        };
+        if (navigator.clipboard && window.isSecureContext) {
+            navigator.clipboard.writeText(text).then(() => {
+                copyStatus.textContent = T.copied;
+                copyButton.classList.remove('is-done');
+                void copyButton.offsetWidth;
+                copyButton.classList.add('is-done');
+                setTimeout(() => copyButton.classList.remove('is-done'), 2200);
+            }, fallback);
+        } else fallback();
+    });
     toggle.addEventListener('click', () => action(report && report.recording ? 'pause' : 'resume'));
     clear.addEventListener('click', () => confirmDialog(T.clearTitle, T.confirmClr, T.clearOk, () => action('clear')));
     csvButton.addEventListener('click', () => {
